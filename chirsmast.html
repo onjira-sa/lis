@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sniper Santa Headshot</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #0f4d0f 0%, #3d0a0a 80%, #1a0505 100%);
+            height: 100vh;
+            font-family: 'Arial Black', sans-serif;
+            
+            /* --- เปลี่ยนเมาส์เป็นรูปเป้าปืน (SVG) --- */
+            /* เลข 20 20 ด้านหลังคือจุดกึ่งกลางของเป้า (Hotspot) */
+            cursor: url('data:image/svg+xml;utf8,<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><circle cx="20" cy="20" r="18" stroke="red" stroke-width="2" fill="none"/><line x1="20" y1="0" x2="20" y2="40" stroke="red" stroke-width="1"/><line x1="0" y1="20" x2="40" y2="20" stroke="red" stroke-width="1"/><circle cx="20" cy="20" r="3" fill="red"/></svg>') 20 20, crosshair;
+        }
+
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            color: rgba(255, 255, 255, 0.8);
+            user-select: none;
+            z-index: 1;
+            animation: fall linear infinite;
+            pointer-events: none;
+        }
+        @keyframes fall {
+            to { transform: translateY(105vh) rotate(360deg); }
+        }
+
+        #santa-container {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            z-index: 10;
+            transition: all 0.4s ease-out;
+            filter: drop-shadow(0 5px 5px rgba(0,0,0,0.5));
+            /* บังคับให้ใช้เมาส์เป้าปืนแม้จะชี้ที่ตัวซานต้า */
+            cursor: inherit; 
+        }
+
+        #santa-visual {
+            font-size: 80px;
+            text-align: center;
+            line-height: 100px;
+            user-select: none;
+        }
+
+        /* Hitbox ส่วนหัว */
+        #santa-head-hitbox {
+            position: absolute;
+            top: 5%;
+            left: 25%;
+            width: 50%;
+            height: 45%;
+            background-color: transparent; 
+            z-index: 11;
+            border-radius: 50% 50% 20% 20%;
+            cursor: inherit; /* ใช้เป้าปืน */
+        }
+
+        #fireworksCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none;
+            display: none;
+        }
+
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0) rotate(-10deg);
+            color: #ffffff;
+            font-size: 4em;
+            text-align: center;
+            text-shadow: 3px 3px 0 #d60000, -3px -3px 0 #009100, 0 0 20px #fff700;
+            z-index: 30;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        #message.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1) rotate(0deg);
+        }
+        
+        #instructions {
+             position: absolute;
+             bottom: 20px;
+             width: 100%;
+             text-align: center;
+             color: #ffcccb;
+             font-size: 1.5em;
+             text-shadow: 2px 2px 4px black;
+             pointer-events: none;
+        }
+
+        /* เอฟเฟกต์หน้าจอสั่นตอนยิง */
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="instructions">USE THE SCOPE! AIM FOR THE HEAD! 🎯</div>
+
+    <script>
+        function createSnow() {
+            const snowflake = document.createElement('div');
+            snowflake.classList.add('snowflake');
+            snowflake.innerHTML = ['❅', '❆', '❄'][Math.floor(Math.random() * 3)];
+            snowflake.style.left = Math.random() * 100 + 'vw';
+            snowflake.style.fontSize = (Math.random() * 15 + 10) + 'px';
+            snowflake.style.animationDuration = (Math.random() * 5 + 3) + 's';
+            document.body.appendChild(snowflake);
+            setTimeout(() => snowflake.remove(), 8000);
+        }
+        setInterval(createSnow, 200);
+    </script>
+
+    <div id="santa-container">
+        <div id="santa-visual">🎅</div>
+        <div id="santa-head-hitbox"></div>
+    </div>
+
+    <canvas id="fireworksCanvas"></canvas>
+    <div id="message">
+        BOOM! 💥<br>
+        MERRY CHRISTMAS!
+    </div>
+
+    <script>
+        const santaContainer = document.getElementById('santa-container');
+        const headHitbox = document.getElementById('santa-head-hitbox');
+        const message = document.getElementById('message');
+        const canvas = document.getElementById('fireworksCanvas');
+        const ctx = canvas.getContext('2d');
+        const instructions = document.getElementById('instructions');
+        let santaTimer;
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        function moveSanta() {
+            const maxX = window.innerWidth - santaContainer.offsetWidth;
+            const maxY = window.innerHeight - santaContainer.offsetHeight;
+            const randomX = Math.floor(Math.random() * maxX);
+            const randomY = Math.floor(Math.random() * maxY);
+            santaContainer.style.left = randomX + 'px';
+            santaContainer.style.top = randomY + 'px';
+        }
+
+        santaTimer = setInterval(moveSanta, 600);
+        moveSanta();
+
+        // --- เพิ่มเสียงยิง ---
+        function playSound() {
+            // ใช้ Web Audio API สร้างเสียงตูมตามง่ายๆ (ไม่ต้องใช้ไฟล์ภายนอก)
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sawtooth'; // เสียงแหลมเหมือนปืนเลเซอร์/ระเบิด
+            oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        }
+
+        // --- เมื่อคลิกหน้าจอ (เสียงปืน) ---
+        document.body.addEventListener('mousedown', () => {
+             // สร้างเสียงปืนสั้นๆ
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        });
+
+
+        // --- เมื่อยิงโดนหัว ---
+        headHitbox.addEventListener('mousedown', (e) => { // เปลี่ยนเป็น mousedown เพื่อให้ทันใจ
+            e.stopPropagation(); // หยุดไม่ให้ event ทะลุไป body
+            clearInterval(santaTimer);
+            santaContainer.style.display = 'none';
+            instructions.style.display = 'none';
+            message.classList.add('show');
+            canvas.style.display = 'block';
+            
+            // สั่นหน้าจอ
+            document.body.classList.add('shake');
+            
+            playSound(); // เสียงระเบิด
+
+            for(let i=0; i<8; i++) {
+                setTimeout(() => {
+                     createFirework(
+                        e.clientX + (Math.random() - 0.5) * 300, 
+                        e.clientY + (Math.random() - 0.5) * 300
+                    );
+                }, i * 200);
+            }
+            animateFireworks();
+        });
+
+        // --- ระบบพลุ ---
+        let particles = [];
+        const fireworkColors = ['#ff0000', '#00ff00', '#ffffff', '#ffcc00', '#d60000', '#009100'];
+
+        function createFirework(x, y) {
+            const particleCount = 120;
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle(x, y));
+            }
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.color = fireworkColors[Math.floor(Math.random() * fireworkColors.length)];
+                this.radius = Math.random() * 4 + 1;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 10 + 2; 
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.gravity = 0.2;
+                this.opacity = 1;
+                this.fade = Math.random() * 0.02 + 0.01;
+            }
+
+            update() {
+                this.vy += this.gravity;
+                this.x += this.vx * 0.96; // แรงต้านอากาศ
+                this.y += this.vy * 0.96;
+                this.opacity -= this.fade;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${hexToRgb(this.color)}, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
+
+        function animateFireworks() {
+            requestAnimationFrame(animateFireworks);
+            ctx.fillStyle = 'rgba(26, 5, 5, 0.2)'; // พื้นหลังค่อยๆ กลบเพื่อให้เกิดหางพลุ
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            particles.forEach((particle, index) => {
+                if (particle.opacity > 0) {
+                    particle.update();
+                    particle.draw();
+                } else {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+
+        function hexToRgb(hex) {
+            const bigint = parseInt(hex.slice(1), 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            return `${r},${g},${b}`;
+        }
+    </script>
+</body>
+</html>
